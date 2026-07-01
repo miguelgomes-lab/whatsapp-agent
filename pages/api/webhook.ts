@@ -8,14 +8,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const body = req.body
-    if (body.fromMe || body.isGroup) return res.status(200).json({ ok: true })
 
-    const messageText = body.text?.message || body.caption
+    // Evolution API payload
+    const event = body.event
+    if (event !== "messages.upsert") return res.status(200).json({ ok: true })
+
+    const msg = body.data
+    if (!msg) return res.status(200).json({ ok: true })
+
+    // Ignorar mensagens enviadas por nós
+    if (msg.key?.fromMe) return res.status(200).json({ ok: true })
+
+    // Ignorar grupos
+    const remoteJid = msg.key?.remoteJid || ""
+    if (remoteJid.includes("@g.us")) return res.status(200).json({ ok: true })
+
+    // Extrair texto
+    const messageText = msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      msg.message?.imageMessage?.caption ||
+      ""
+
     if (!messageText) return res.status(200).json({ ok: true })
 
-    const phone = body.phone
-    const senderName = body.senderName || phone
-    const messageId = body.messageId || crypto.randomUUID()
+    // Número do remetente (formato: 351912345678@s.whatsapp.net)
+    const phone = remoteJid.replace("@s.whatsapp.net", "")
+    const senderName = msg.pushName || phone
+    const messageId = msg.key?.id || crypto.randomUUID()
     const timestamp = new Date()
 
     await db.collection("messages").doc(messageId).set({
