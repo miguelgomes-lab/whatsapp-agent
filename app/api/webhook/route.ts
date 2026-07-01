@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/firebase'
-import { generateDraft } from '@/lib/claude'
+import { NextRequest, NextResponse } from "next/server"
+import { db } from "@/lib/firebase"
+import { generateDraft } from "@/lib/claude"
+
+export const dynamic = "force-dynamic"
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,19 +19,17 @@ export async function POST(req: NextRequest) {
     const messageId = body.messageId || crypto.randomUUID()
     const timestamp = new Date()
 
-    // Guardar mensagem recebida
-    await db.collection('messages').doc(messageId).set({
+    await db.collection("messages").doc(messageId).set({
       phone,
       senderName,
       content: messageText,
-      direction: 'inbound',
+      direction: "inbound",
       createdAt: timestamp,
     })
 
-    // Buscar histórico recente (últimas 10 mensagens deste número)
-    const historySnap = await db.collection('messages')
-      .where('phone', '==', phone)
-      .orderBy('createdAt', 'desc')
+    const historySnap = await db.collection("messages")
+      .where("phone", "==", phone)
+      .orderBy("createdAt", "desc")
       .limit(11)
       .get()
 
@@ -38,30 +38,28 @@ export async function POST(req: NextRequest) {
       .filter(d => d.id !== messageId)
       .slice(-10)
       .map(d => ({
-        role: (d.data().direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
+        role: (d.data().direction === "inbound" ? "user" : "assistant") as "user" | "assistant",
         content: d.data().content as string,
       }))
 
-    // Gerar rascunho com Claude
     const draft = await generateDraft(messageText, conversationHistory)
 
-    // Guardar rascunho
-    await db.collection('drafts').add({
+    await db.collection("drafts").add({
       phone,
       senderName,
       originalMessage: messageText,
       draftContent: draft,
-      status: 'pending',
+      status: "pending",
       createdAt: timestamp,
     })
 
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error('Webhook error:', err)
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+    console.error("Webhook error:", err)
+    return NextResponse.json({ error: "Internal error" }, { status: 500 })
   }
 }
 
 export async function GET() {
-  return NextResponse.json({ status: 'ok' })
+  return NextResponse.json({ status: "ok" })
 }
