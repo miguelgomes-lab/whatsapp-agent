@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next"
 import { db } from "@/lib/firebase"
-import { sendWhatsAppMessage } from "@/lib/zapi"
+import { sendWhatsAppMessage } from "@/lib/evolution"
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).end()
@@ -13,7 +13,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!draftSnap.exists) return res.status(404).json({ error: "Draft not found" })
 
     const draft = draftSnap.data()!
-    await sendWhatsAppMessage(draft.phone, content)
+
+    // Evolution API precisa do número com sufixo
+    const phone = draft.phone.includes("@") ? draft.phone : `${draft.phone}@s.whatsapp.net`
+    await sendWhatsAppMessage(phone, content)
 
     await db.collection("messages").add({
       phone: draft.phone, senderName: "Miguel",
