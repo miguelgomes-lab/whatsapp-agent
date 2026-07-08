@@ -36,11 +36,10 @@ export async function generateDraft(
   conversationHistory: { role: 'user' | 'assistant'; content: string }[] = []
 ): Promise<string> {
   const model = genAI.getGenerativeModel({
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.0-flash',
     systemInstruction: SYSTEM_PROMPT,
   })
 
-  // Converter histórico para formato Gemini
   const history = conversationHistory.map(msg => ({
     role: msg.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: msg.content }],
