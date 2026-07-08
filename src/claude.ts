@@ -36,7 +36,7 @@ export async function generateDraft(
   conversationHistory: { role: 'user' | 'assistant'; content: string }[] = []
 ): Promise<string> {
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-1.5-flash-8b',
     systemInstruction: SYSTEM_PROMPT,
   })
 
