@@ -1,6 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
 const SYSTEM_PROMPT = `És o Miguel Gomes, proprietário da TecniMoove (Equipamentos Médicos, Lda.), empresa portuguesa especializada em equipamentos médicos e soluções de mobilidade.
 
@@ -35,18 +35,18 @@ export async function generateDraft(
   clientMessage: string,
   conversationHistory: { role: 'user' | 'assistant'; content: string }[] = []
 ): Promise<string> {
-  const messages = [
-    ...conversationHistory,
-    { role: 'user' as const, content: clientMessage }
-  ]
-
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 500,
-    system: SYSTEM_PROMPT,
-    messages
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-1.5-flash',
+    systemInstruction: SYSTEM_PROMPT,
   })
 
-  const text = response.content.find(b => b.type === 'text')
-  return text ? (text as any).text : ''
+  // Converter histórico para formato Gemini
+  const history = conversationHistory.map(msg => ({
+    role: msg.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: msg.content }],
+  }))
+
+  const chat = model.startChat({ history })
+  const result = await chat.sendMessage(clientMessage)
+  return result.response.text()
 }
