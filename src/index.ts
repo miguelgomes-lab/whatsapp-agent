@@ -1,11 +1,9 @@
 import 'dotenv/config'
 import express from 'express'
 import fs from 'fs'
-import path from 'path'
 import {
   makeWASocket,
   DisconnectReason,
-  useMultiFileAuthState,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
 } from '@whiskeysockets/baileys'
@@ -13,6 +11,7 @@ import { Boom } from '@hapi/boom'
 import pino from 'pino'
 import { getFirestore } from './firebase'
 import { generateDraft } from './claude'
+import { useFirestoreAuthState } from './auth-firestore'
 
 const logger = pino({ level: 'silent' })
 const app = express()
@@ -20,7 +19,6 @@ app.use(express.json())
 
 let sock: ReturnType<typeof makeWASocket> | null = null
 let latestQR: string | null = null
-const AUTH_FOLDER = 'auth_info'
 
 async function saveDraft(phone: string, senderName: string, message: string, draft: string) {
   const db = getFirestore()
@@ -49,12 +47,16 @@ async function getConversationHistory(phone: string): Promise<{ role: 'user' | '
 }
 
 async function connectToWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER)
+  // Sessão guardada no Firestore — sobrevive a redeployos
+  const { state, saveCreds } = await useFirestoreAuthState()
   const { version } = await fetchLatestBaileysVersion()
 
   sock = makeWASocket({
     version, logger,
-    auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger),
+    },
     printQRInTerminal: false,
     browser: ['TecniMoove Agent', 'Chrome', '120.0.0'],
   })
@@ -130,14 +132,14 @@ app.get('/qr', (_, res) => {
   `)
 })
 
-// ── Reset sessão WhatsApp ─────────────────────────────────────────────────────
-app.get('/reset', (_, res) => {
+// ── Reset sessão ──────────────────────────────────────────────────────────────
+app.get('/reset', async (_, res) => {
   try {
     if (sock) { sock.end(undefined); sock = null }
-    if (fs.existsSync(AUTH_FOLDER)) {
-      fs.rmSync(AUTH_FOLDER, { recursive: true, force: true })
-      console.log('🗑 Sessão apagada')
-    }
+    // Apagar sessão do Firestore
+    const db = getFirestore()
+    await db.collection('baileys_auth').doc('whatsapp_session').delete()
+    console.log('🗑 Sessão apagada do Firestore')
     setTimeout(connectToWhatsApp, 2000)
     res.send(`
       <html><body style="font-family:sans-serif;text-align:center;padding:40px">
