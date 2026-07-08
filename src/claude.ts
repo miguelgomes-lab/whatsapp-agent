@@ -1,6 +1,5 @@
-// Usa a API REST do Gemini diretamente (v1, não v1beta)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`
 
 const SYSTEM_PROMPT = `És o Miguel Gomes, proprietário da TecniMoove (Equipamentos Médicos, Lda.), empresa portuguesa especializada em equipamentos médicos e soluções de mobilidade.
 
@@ -29,7 +28,7 @@ REGRAS IMPORTANTES:
 
 Gera uma resposta como se fosses o Miguel a responder a esta mensagem de WhatsApp.
 Resposta deve ser curta, natural, como uma mensagem de WhatsApp — não um email.
-Devolve APENAS o texto da resposta, sem explicações adicionais.`
+Devolve APENAS o texto da resposta, sem explicações adicionais.\`
 
 export async function generateDraft(
   clientMessage: string,
@@ -47,7 +46,7 @@ export async function generateDraft(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents,
       generationConfig: { maxOutputTokens: 500 }
     })
