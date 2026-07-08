@@ -1,33 +1,26 @@
 # WhatsApp Agent — TecniMoove
 
-Agente de IA que gera rascunhos de resposta no teu estilo para mensagens WhatsApp recebidas.
+Servidor Node.js que conecta ao WhatsApp via Baileys, gera rascunhos com Claude AI e guarda no Firebase.
 
-## Setup
+## Deploy no Render.com (gratuito)
 
 ### 1. Firebase
-1. Cria projeto em console.firebase.google.com
-2. Ativa **Firestore** (modo produção)
-3. Settings → Service Accounts → **Generate new private key** (guarda o JSON)
-4. Cria índice composto no Firestore:
-   - Coleção: `messages` | Campos: `phone ASC`, `createdAt DESC`
+- console.firebase.google.com → novo projeto
+- Ativa Firestore (modo produção)
+- Settings → Service Accounts → Generate new private key
 
-### 2. Z-API
-1. Na tua instância Z-API → **Webhooks**
-2. Webhook de mensagens recebidas: `https://SEU-DOMINIO.vercel.app/api/webhook`
-3. Ativa: "Receber mensagens"
+### 2. Render.com
+- New → Web Service → ligar ao repo `miguelgomes-lab/whatsapp-agent`
+- Build Command: `npm install && npm run build`
+- Start Command: `npm start`
+- Adicionar disco: Mount Path `/opt/render/project/src/auth_info`
+- Env vars: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, ANTHROPIC_API_KEY
 
-### 3. Vercel
-Adiciona estas Environment Variables:
-- `FIREBASE_PROJECT_ID`
-- `FIREBASE_CLIENT_EMAIL`
-- `FIREBASE_PRIVATE_KEY` (com as \n do JSON)
-- `ANTHROPIC_API_KEY`
-- `ZAPI_INSTANCE_ID`
-- `ZAPI_TOKEN`
-- `ZAPI_CLIENT_TOKEN`
+### 3. Ligar WhatsApp
+- Nos logs do Render aparece o QR Code
+- Lê com o WhatsApp → Dispositivos Ligados
+- Sessão fica guardada no disco — só uma vez
 
-## Uso
-- Dashboard em `https://SEU-PROJETO.vercel.app`
-- Cada mensagem nova aparece com rascunho IA
-- Edita se necessário → **Enviar**
-- Atualiza automaticamente a cada 15 segundos
+## Índices Firestore
+- Coleção `messages`: `phone ASC` + `createdAt ASC`
+- Coleção `drafts`: `status ASC` + `createdAt DESC`
