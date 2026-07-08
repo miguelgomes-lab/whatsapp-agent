@@ -1,5 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
+import fs from 'fs'
+import path from 'path'
 import {
   makeWASocket,
   DisconnectReason,
@@ -18,23 +20,15 @@ app.use(express.json())
 
 let sock: ReturnType<typeof makeWASocket> | null = null
 let latestQR: string | null = null
+const AUTH_FOLDER = 'auth_info'
 
 async function saveDraft(phone: string, senderName: string, message: string, draft: string) {
   const db = getFirestore()
   await db.collection('messages').add({
-    phone,
-    senderName,
-    body: message,
-    direction: 'inbound',
-    createdAt: new Date(),
+    phone, senderName, body: message, direction: 'inbound', createdAt: new Date(),
   })
   await db.collection('drafts').add({
-    phone,
-    senderName,
-    originalMessage: message,
-    draft,
-    status: 'pending',
-    createdAt: new Date(),
+    phone, senderName, originalMessage: message, draft, status: 'pending', createdAt: new Date(),
   })
   console.log(`[✓] Rascunho guardado para ${phone} (${senderName})`)
 }
@@ -42,8 +36,7 @@ async function saveDraft(phone: string, senderName: string, message: string, dra
 async function getConversationHistory(phone: string): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
   const db = getFirestore()
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const msgs = await db
-    .collection('messages')
+  const msgs = await db.collection('messages')
     .where('phone', '==', phone)
     .where('createdAt', '>=', cutoff)
     .orderBy('createdAt', 'asc')
@@ -56,37 +49,29 @@ async function getConversationHistory(phone: string): Promise<{ role: 'user' | '
 }
 
 async function connectToWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info')
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER)
   const { version } = await fetchLatestBaileysVersion()
 
   sock = makeWASocket({
-    version,
-    logger,
-    auth: {
-      creds: state.creds,
-      keys: makeCacheableSignalKeyStore(state.keys, logger),
-    },
+    version, logger,
+    auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
     printQRInTerminal: false,
     browser: ['TecniMoove Agent', 'Chrome', '120.0.0'],
   })
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update
-
     if (qr) {
       latestQR = qr
-      console.log('📱 QR Code disponível em: /qr')
+      console.log('📱 QR Code disponivel em: /qr')
     }
-
     if (connection === 'close') {
       latestQR = null
-      const shouldReconnect =
-        (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
+      const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
       console.log('Conexão fechada. Reconectar:', shouldReconnect)
       if (shouldReconnect) setTimeout(connectToWhatsApp, 5000)
-      else console.log('Sessão terminada. Apaga a pasta auth_info e reinicia.')
+      else console.log('Sessão terminada.')
     }
-
     if (connection === 'open') {
       latestQR = null
       console.log('✅ WhatsApp ligado com sucesso!')
@@ -101,8 +86,7 @@ async function connectToWhatsApp() {
       if (msg.key.fromMe) continue
       if (msg.key.remoteJid?.endsWith('@g.us')) continue
       const phone = msg.key.remoteJid || ''
-      const body =
-        msg.message?.conversation ||
+      const body = msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
         msg.message?.imageMessage?.caption || ''
       if (!body.trim()) continue
@@ -120,32 +104,51 @@ async function connectToWhatsApp() {
   })
 }
 
-// ── Página QR Code legível no browser ────────────────────────────────────────
+// ── QR Code como imagem ───────────────────────────────────────────────────────
 app.get('/qr', (_, res) => {
   if (!latestQR) {
     return res.send(`
       <html><body style="font-family:sans-serif;text-align:center;padding:40px">
         <h2>${sock ? '✅ WhatsApp já está ligado!' : '⏳ A aguardar QR Code... recarrega a página.'}</h2>
+        <p><a href="/qr">Recarregar</a> | <a href="/health">Estado</a></p>
       </body></html>
     `)
   }
-  // Usar a API do qrserver.com para gerar imagem a partir do conteúdo do QR
   const encoded = encodeURIComponent(latestQR)
   res.send(`
     <html>
-      <head>
-        <meta http-equiv="refresh" content="20">
-        <style>body{font-family:sans-serif;text-align:center;padding:40px;background:#f0f0f0}</style>
-      </head>
+      <head><meta http-equiv="refresh" content="20">
+      <style>body{font-family:sans-serif;text-align:center;padding:40px;background:#f0f0f0}</style></head>
       <body>
         <h2>📱 Liga o WhatsApp — TecniMoove</h2>
         <p>WhatsApp → Dispositivos Ligados → Ligar um dispositivo</p>
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encoded}" 
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encoded}"
              style="border:8px solid white;border-radius:8px;margin:20px auto;display:block"/>
         <p style="color:#888;font-size:14px">A página atualiza automaticamente a cada 20 segundos</p>
       </body>
     </html>
   `)
+})
+
+// ── Reset sessão WhatsApp ─────────────────────────────────────────────────────
+app.get('/reset', (_, res) => {
+  try {
+    if (sock) { sock.end(undefined); sock = null }
+    if (fs.existsSync(AUTH_FOLDER)) {
+      fs.rmSync(AUTH_FOLDER, { recursive: true, force: true })
+      console.log('🗑 Sessão apagada')
+    }
+    setTimeout(connectToWhatsApp, 2000)
+    res.send(`
+      <html><body style="font-family:sans-serif;text-align:center;padding:40px">
+        <h2>🔄 Sessão resetada!</h2>
+        <p>Aguarda 5 segundos e vai para o QR Code</p>
+        <meta http-equiv="refresh" content="5;url=/qr">
+      </body></html>
+    `)
+  } catch (err) {
+    res.status(500).send('Erro ao resetar: ' + err)
+  }
 })
 
 app.post('/send', async (req, res) => {
@@ -154,12 +157,8 @@ app.post('/send', async (req, res) => {
   try {
     await sock.sendMessage(phone, { text: message })
     const db = getFirestore()
-    await db.collection('messages').add({
-      phone, body: message, direction: 'outbound', createdAt: new Date(),
-    })
-    if (draftId) {
-      await db.collection('drafts').doc(draftId).update({ status: 'sent', sentAt: new Date() })
-    }
+    await db.collection('messages').add({ phone, body: message, direction: 'outbound', createdAt: new Date() })
+    if (draftId) await db.collection('drafts').doc(draftId).update({ status: 'sent', sentAt: new Date() })
     console.log(`[✓] Mensagem enviada para ${phone}`)
     res.json({ ok: true })
   } catch (err) {
@@ -168,7 +167,7 @@ app.post('/send', async (req, res) => {
   }
 })
 
-app.get('/health', (_, res) => res.json({ status: 'ok', connected: sock !== null }))
+app.get('/health', (_, res) => res.json({ status: 'ok', connected: sock !== null, hasQR: latestQR !== null }))
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
