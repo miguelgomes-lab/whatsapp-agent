@@ -8,7 +8,6 @@ import {
   makeCacheableSignalKeyStore,
 } from '@whiskeysockets/baileys'
 import { Boom } from '@hapi/boom'
-import qrcode from 'qrcode-terminal'
 import pino from 'pino'
 import { getFirestore } from './firebase'
 import { generateDraft } from './claude'
@@ -18,6 +17,7 @@ const app = express()
 app.use(express.json())
 
 let sock: ReturnType<typeof makeWASocket> | null = null
+let latestQR: string | null = null
 
 async function saveDraft(phone: string, senderName: string, message: string, draft: string) {
   const db = getFirestore()
@@ -72,18 +72,25 @@ async function connectToWhatsApp() {
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update
+
     if (qr) {
-      console.log('\n📱 Lê o QR Code abaixo com o teu WhatsApp:\n')
-      qrcode.generate(qr, { small: true })
+      latestQR = qr
+      console.log('📱 QR Code disponível em: /qr')
     }
+
     if (connection === 'close') {
+      latestQR = null
       const shouldReconnect =
         (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
       console.log('Conexão fechada. Reconectar:', shouldReconnect)
       if (shouldReconnect) setTimeout(connectToWhatsApp, 5000)
       else console.log('Sessão terminada. Apaga a pasta auth_info e reinicia.')
     }
-    if (connection === 'open') console.log('✅ WhatsApp ligado com sucesso!')
+
+    if (connection === 'open') {
+      latestQR = null
+      console.log('✅ WhatsApp ligado com sucesso!')
+    }
   })
 
   sock.ev.on('creds.update', saveCreds)
@@ -112,6 +119,34 @@ async function connectToWhatsApp() {
     }
   })
 }
+
+// ── Página QR Code legível no browser ────────────────────────────────────────
+app.get('/qr', (_, res) => {
+  if (!latestQR) {
+    return res.send(`
+      <html><body style="font-family:sans-serif;text-align:center;padding:40px">
+        <h2>${sock ? '✅ WhatsApp já está ligado!' : '⏳ A aguardar QR Code... recarrega a página.'}</h2>
+      </body></html>
+    `)
+  }
+  // Usar a API do qrserver.com para gerar imagem a partir do conteúdo do QR
+  const encoded = encodeURIComponent(latestQR)
+  res.send(`
+    <html>
+      <head>
+        <meta http-equiv="refresh" content="20">
+        <style>body{font-family:sans-serif;text-align:center;padding:40px;background:#f0f0f0}</style>
+      </head>
+      <body>
+        <h2>📱 Liga o WhatsApp — TecniMoove</h2>
+        <p>WhatsApp → Dispositivos Ligados → Ligar um dispositivo</p>
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encoded}" 
+             style="border:8px solid white;border-radius:8px;margin:20px auto;display:block"/>
+        <p style="color:#888;font-size:14px">A página atualiza automaticamente a cada 20 segundos</p>
+      </body>
+    </html>
+  `)
+})
 
 app.post('/send', async (req, res) => {
   const { phone, message, draftId } = req.body
