@@ -29,7 +29,7 @@ REGRAS IMPORTANTES:
 
 Gera uma resposta como se fosses o Miguel a responder a esta mensagem de WhatsApp.
 Resposta deve ser curta, natural, como uma mensagem de WhatsApp — não um email.
-Devolve APENAS o texto da resposta, sem explicações adicionais.\`
+Devolve APENAS o texto da resposta, sem explicações adicionais.`
 
 export async function generateDraft(
   clientMessage: string,
